@@ -292,6 +292,7 @@ async function handleMessage(
       session,
       updateSession,
       clearSession: () => sessionStore.clear(account.accountId),
+      getChatHistoryText: (limit?: number) => sessionStore.getChatHistoryText(session, limit),
       text: userText,
     };
 
@@ -368,6 +369,9 @@ async function sendToClaude(
   session.state = 'processing';
   sessionStore.save(account.accountId, session);
 
+  // Record user message in chat history
+  sessionStore.addChatMessage(session, 'user', userText || '(图片)');
+
   try {
     // Download image if present
     let images: QueryOptions['images'];
@@ -435,13 +439,26 @@ async function sendToClaude(
           },
     };
 
-    const result = await claudeQuery(queryOptions);
+    let result = await claudeQuery(queryOptions);
+
+    // If resume failed (e.g. corrupted session), retry without resume
+    if (result.error && queryOptions.resume) {
+      logger.warn('Resume failed, retrying without resume', { error: result.error, sessionId: queryOptions.resume });
+      queryOptions.resume = undefined;
+      session.sdkSessionId = undefined;
+      sessionStore.save(account.accountId, session);
+      const retryResult = await claudeQuery(queryOptions);
+      Object.assign(result, retryResult);
+    }
 
     // Send result back to WeChat (show generic error to user, log details internally)
     if (result.error) {
       logger.error('Claude query error', { error: result.error });
       await sender.sendText(fromUserId, contextToken, '⚠️ Claude 处理请求时出错，请稍后重试。');
     } else if (result.text) {
+      // Record assistant response in chat history
+      sessionStore.addChatMessage(session, 'assistant', result.text);
+
       const chunks = splitMessage(result.text);
       for (const chunk of chunks) {
         await sender.sendText(fromUserId, contextToken, chunk);

@@ -10,6 +10,7 @@ const HELP_TEXT = `可用命令：
   /permission <模式> 切换权限模式
   /status           查看当前会话状态
   /skills           列出已安装的 skill
+  /history [数量]   查看对话记录（默认显示最近20条）
   /<skill> [参数]   触发已安装的 skill
 
 直接输入文字即可与 Claude Code 对话`;
@@ -115,6 +116,17 @@ export function handleSkills(): CommandResult {
   }
   const lines = skills.map(s => `/${s.name} — ${s.description}`);
   return { reply: `📋 已安装的 Skill (${skills.length}):\n\n${lines.join('\n')}`, handled: true };
+}
+
+export function handleHistory(ctx: CommandContext, args: string): CommandResult {
+  const limit = args ? parseInt(args, 10) : 20;
+  if (isNaN(limit) || limit <= 0) {
+    return { reply: '用法: /history [数量]\n例: /history 50（显示最近50条对话）', handled: true };
+  }
+
+  const historyText = ctx.getChatHistoryText?.(limit) || '暂无对话记录';
+
+  return { reply: `📝 对话记录（最近${limit}条）:\n\n${historyText}`, handled: true };
 }
 
 export function handleUnknown(cmd: string, args: string): CommandResult {
