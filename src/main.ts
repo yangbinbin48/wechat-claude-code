@@ -197,6 +197,17 @@ async function handleMessage(
     if (!userText.startsWith('/status') && !userText.startsWith('/help')) return;
   }
 
+  // -- Grace period: catch late y/n after timeout --
+
+  if (session.state === 'idle' && permissionBroker.isTimedOut(account.accountId)) {
+    const lower = userText.toLowerCase();
+    if (lower === 'y' || lower === 'yes' || lower === 'n' || lower === 'no') {
+      permissionBroker.clearTimedOut(account.accountId);
+      await sender.sendText(fromUserId, contextToken, '⏰ 权限请求已超时，请重新发送你的请求。');
+      return;
+    }
+  }
+
   // -- Permission state handling --
 
   if (session.state === 'waiting_permission') {
@@ -325,40 +336,48 @@ async function sendToClaude(
       }
     }
 
+    const effectivePermissionMode = session.permissionMode ?? config.permissionMode;
+    const isAutoPermission = effectivePermissionMode === 'auto';
+
+    // Map 'auto' to the SDK's underlying mode (use acceptEdits as base, but we override canUseTool)
+    const sdkPermissionMode = isAutoPermission ? 'acceptEdits' : effectivePermissionMode;
+
     const queryOptions: QueryOptions = {
       prompt: userText || '请分析这张图片',
       cwd: session.workingDirectory || config.workingDirectory,
       resume: session.sdkSessionId,
       model: session.model,
-      permissionMode: session.permissionMode ?? config.permissionMode,
+      permissionMode: sdkPermissionMode,
       images,
-      onPermissionRequest: async (toolName: string, toolInput: string) => {
-        // Set state to waiting_permission
-        session.state = 'waiting_permission';
-        sessionStore.save(account.accountId, session);
+      onPermissionRequest: isAutoPermission
+        ? async () => true  // auto-approve all tools, skip broker
+        : async (toolName: string, toolInput: string) => {
+            // Set state to waiting_permission
+            session.state = 'waiting_permission';
+            sessionStore.save(account.accountId, session);
 
-        // Create pending permission
-        const permissionPromise = permissionBroker.createPending(
-          account.accountId,
-          toolName,
-          toolInput,
-        );
+            // Create pending permission
+            const permissionPromise = permissionBroker.createPending(
+              account.accountId,
+              toolName,
+              toolInput,
+            );
 
-        // Send permission message to WeChat
-        const perm = permissionBroker.getPending(account.accountId);
-        if (perm) {
-          const permMsg = permissionBroker.formatPendingMessage(perm);
-          await sender.sendText(fromUserId, contextToken, permMsg);
-        }
+            // Send permission message to WeChat
+            const perm = permissionBroker.getPending(account.accountId);
+            if (perm) {
+              const permMsg = permissionBroker.formatPendingMessage(perm);
+              await sender.sendText(fromUserId, contextToken, permMsg);
+            }
 
-        const allowed = await permissionPromise;
+            const allowed = await permissionPromise;
 
-        // Reset state after permission resolved
-        session.state = 'processing';
-        sessionStore.save(account.accountId, session);
+            // Reset state after permission resolved
+            session.state = 'processing';
+            sessionStore.save(account.accountId, session);
 
-        return allowed;
-      },
+            return allowed;
+          },
     };
 
     const result = await claudeQuery(queryOptions);
@@ -372,7 +391,7 @@ async function sendToClaude(
         await sender.sendText(fromUserId, contextToken, chunk);
       }
     } else {
-      await sender.sendText(fromUserId, contextToken, '(Claude 返回了空响应)');
+      await sender.sendText(fromUserId, contextToken, 'ℹ️ Claude 无返回内容（可能因权限被拒而终止）');
     }
 
     // Update session with new SDK session ID

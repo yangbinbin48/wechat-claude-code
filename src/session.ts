@@ -11,7 +11,7 @@ export interface Session {
   sdkSessionId?: string;
   workingDirectory: string;
   model?: string;
-  permissionMode?: 'default' | 'acceptEdits' | 'plan';
+  permissionMode?: 'default' | 'acceptEdits' | 'plan' | 'auto';
   state: SessionState;
 }
 

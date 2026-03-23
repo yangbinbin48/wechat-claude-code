@@ -1,18 +1,24 @@
 import { logger } from './logger.js';
 import type { PendingPermission } from './session.js';
 
-const PERMISSION_TIMEOUT = 60_000;
+const PERMISSION_TIMEOUT = 120_000;
+const GRACE_PERIOD = 15_000;
 
 export type OnPermissionTimeout = () => void;
 
 export function createPermissionBroker(onTimeout?: OnPermissionTimeout) {
   const pending = new Map<string, PendingPermission>();
+  const timedOut = new Map<string, number>(); // accountId → timestamp
 
   function createPending(accountId: string, toolName: string, toolInput: string): Promise<boolean> {
+    timedOut.delete(accountId); // clear any previous timeout flag
     return new Promise<boolean>((resolve) => {
       const timer = setTimeout(() => {
         logger.warn('Permission timeout, auto-denied', { accountId, toolName });
         pending.delete(accountId);
+        timedOut.set(accountId, Date.now());
+        // Clean up grace period entry after GRACE_PERIOD
+        setTimeout(() => timedOut.delete(accountId), GRACE_PERIOD);
         resolve(false);
         onTimeout?.();
       }, PERMISSION_TIMEOUT);
@@ -31,6 +37,14 @@ export function createPermissionBroker(onTimeout?: OnPermissionTimeout) {
     return true;
   }
 
+  function isTimedOut(accountId: string): boolean {
+    return timedOut.has(accountId);
+  }
+
+  function clearTimedOut(accountId: string): void {
+    timedOut.delete(accountId);
+  }
+
   function getPending(accountId: string): PendingPermission | undefined {
     return pending.get(accountId);
   }
@@ -43,7 +57,7 @@ export function createPermissionBroker(onTimeout?: OnPermissionTimeout) {
       `\u8F93\u5165: ${perm.toolInput.slice(0, 500)}`,
       '',
       '\u56DE\u590D y \u5141\u8BB8\uFF0Cn \u62D2\u7EDD',
-      '(60\u79D2\u672A\u56DE\u590D\u81EA\u52A8\u62D2\u7EDD)',
+      '(120\u79D2\u672A\u56DE\u590D\u81EA\u52A8\u62D2\u7EDD)',
     ].join('\n');
   }
 
@@ -57,5 +71,5 @@ export function createPermissionBroker(onTimeout?: OnPermissionTimeout) {
     return true;
   }
 
-  return { createPending, resolvePermission, rejectPending, getPending, formatPendingMessage };
+  return { createPending, resolvePermission, rejectPending, isTimedOut, clearTimedOut, getPending, formatPendingMessage };
 }

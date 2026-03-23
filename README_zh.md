@@ -74,6 +74,7 @@ npm run daemon -- logs     # 查看最近日志
 | `/help` | 显示帮助 |
 | `/clear` | 清除当前会话（重新开始） |
 | `/model <名称>` | 切换 Claude 模型 |
+| `/permission <模式>` | 切换权限模式 |
 | `/status` | 查看当前会话状态 |
 | `/skills` | 列出已安装的 Claude Code Skill |
 | `/<skill> [参数]` | 触发任意已安装的 Skill |
@@ -84,7 +85,16 @@ npm run daemon -- logs     # 查看最近日志
 
 - 回复 `y` 或 `yes` 允许
 - 回复 `n` 或 `no` 拒绝
-- 60 秒未回复自动拒绝
+- 120 秒未回复自动拒绝
+
+通过 `/permission <模式>` 切换权限模式：
+
+| 模式 | 说明 |
+|------|------|
+| `default` | 每次工具使用需手动审批 |
+| `acceptEdits` | 自动批准文件编辑，其他需审批 |
+| `plan` | 只读模式，不允许任何工具 |
+| `auto` | 自动批准所有工具（危险模式） |
 
 ## 工作原理
 

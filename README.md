@@ -74,6 +74,7 @@ npm run daemon -- logs     # View recent logs
 | `/help` | Show available commands |
 | `/clear` | Clear current session (start fresh) |
 | `/model <name>` | Switch Claude model |
+| `/permission <mode>` | Switch permission mode |
 | `/status` | View current session state |
 | `/skills` | List installed Claude Code skills |
 | `/<skill> [args]` | Trigger any installed skill |
@@ -84,7 +85,16 @@ When Claude requests to execute a tool, you'll receive a permission request in W
 
 - Reply `y` or `yes` to allow
 - Reply `n` or `no` to deny
-- No response within 60 seconds = auto-deny
+- No response within 120 seconds = auto-deny
+
+You can switch permission mode with `/permission <mode>`:
+
+| Mode | Description |
+|------|-------------|
+| `default` | Manual approval for each tool use |
+| `acceptEdits` | Auto-approve file edits, other tools need approval |
+| `plan` | Read-only mode, no tools allowed |
+| `auto` | Auto-approve all tools (dangerous mode) |
 
 ## How It Works
 
