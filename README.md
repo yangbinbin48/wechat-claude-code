@@ -11,13 +11,13 @@ A [Claude Code](https://claude.ai/claude-code) Skill that bridges personal WeCha
 - Permission approval — reply `y`/`n` in WeChat to approve Claude's tool use
 - Slash commands — `/help`, `/clear`, `/model`, `/status`, `/skills`
 - Launch any installed Claude Code skill from WeChat
-- macOS launchd daemon — auto-start on boot, auto-restart on crash
+- Cross-platform — macOS (launchd), Linux (systemd + nohup fallback)
 - Session persistence — resume conversations across messages
 
 ## Prerequisites
 
 - Node.js >= 18
-- macOS (daemon managed via launchd)
+- macOS or Linux
 - Personal WeChat account (QR code binding required)
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) with `@anthropic-ai/claude-agent-sdk` installed
 
@@ -52,7 +52,8 @@ A QR code image will open — scan it with WeChat. Then configure your working d
 npm run daemon -- start
 ```
 
-This registers a launchd agent for auto-start and auto-restart.
+- **macOS**: registers a launchd agent for auto-start and auto-restart
+- **Linux**: uses systemd user service (falls back to nohup if systemd unavailable)
 
 ### 3. Chat in WeChat
 
@@ -105,7 +106,7 @@ WeChat (phone) ←→ ilink bot API ←→ Node.js daemon ←→ Claude Code SDK
 - The daemon long-polls WeChat's ilink bot API for new messages
 - Messages are forwarded to Claude Code via `@anthropic-ai/claude-agent-sdk`
 - Responses are sent back to WeChat
-- A macOS launchd agent keeps the daemon running
+- Platform-native service management keeps the daemon running (launchd on macOS, systemd/nohup on Linux)
 
 ## Data
 

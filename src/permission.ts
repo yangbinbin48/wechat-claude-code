@@ -11,6 +11,15 @@ export function createPermissionBroker(onTimeout?: OnPermissionTimeout) {
   const timedOut = new Map<string, number>(); // accountId → timestamp
 
   function createPending(accountId: string, toolName: string, toolInput: string): Promise<boolean> {
+    // Clear any existing pending permission for this account to prevent timer leak
+    const existing = pending.get(accountId);
+    if (existing) {
+      clearTimeout(existing.timer);
+      pending.delete(accountId);
+      existing.resolve(false);
+      logger.warn('Replaced existing pending permission', { accountId, toolName: existing.toolName });
+    }
+
     timedOut.delete(accountId); // clear any previous timeout flag
     return new Promise<boolean>((resolve) => {
       const timer = setTimeout(() => {
