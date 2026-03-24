@@ -276,9 +276,15 @@ export function handleResume(ctx: CommandContext): CommandResult {
     };
   }
 
-  // 没有被压缩的会话，尝试恢复最近的会话
-  // 返回特殊标志让 main.ts 使用 continue: true
-  return { handled: true, continueRecent: true };
+  // 没有被压缩的会话，设置标志让下次消息使用 continue: true
+  ctx.updateSession({ continueRecent: true });
+
+  return {
+    reply: `✅ 已设置恢复最近会话\n\n` +
+           `下次发送消息时将恢复当前工作目录的最近对话\n` +
+           `工作目录: ${ctx.session.workingDirectory}`,
+    handled: true,
+  };
 }
 
 /** 查看 MCP 服务器状态 */

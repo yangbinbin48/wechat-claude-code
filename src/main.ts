@@ -342,24 +342,6 @@ async function handleMessage(
       return;
     }
 
-    if (result.handled && result.continueRecent) {
-      // Continue the most recent conversation using SDK's continue option
-      await sendToClaude(
-        '继续我们之前的对话', // This prompt will be sent with continue: true
-        undefined,
-        fromUserId,
-        contextToken,
-        account,
-        session,
-        sessionStore,
-        permissionBroker,
-        sender,
-        config,
-        true, // continueRecent flag
-      );
-      return;
-    }
-
     if (result.handled && result.claudePrompt) {
       // Fall through to send the claudePrompt to Claude
       await sendToClaude(
@@ -392,6 +374,9 @@ async function handleMessage(
     return;
   }
 
+  // Check if we should continue the most recent conversation
+  const shouldContinueRecent = session.continueRecent || false;
+
   await sendToClaude(
     userText,
     imageItem,
@@ -403,6 +388,7 @@ async function handleMessage(
     permissionBroker,
     sender,
     config,
+    shouldContinueRecent,
   );
 }
 
@@ -529,6 +515,8 @@ async function sendToClaude(
     // Update session with new SDK session ID
     session.sdkSessionId = result.sessionId || undefined;
     session.state = 'idle';
+    // Clear continueRecent flag after using it
+    session.continueRecent = undefined;
     // Store MCP servers info if available
     if (result.mcpServers && result.mcpServers.length > 0) {
       session.mcpServers = result.mcpServers;

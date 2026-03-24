@@ -29,6 +29,8 @@ export interface Session {
   sdkSessionId?: string;
   /** 备份的 SDK 会话 ID，用于 /resume 恢复 */
   previousSdkSessionId?: string;
+  /** 下次消息是否使用 continue: true 恢复最近的会话 */
+  continueRecent?: boolean;
   workingDirectory: string;
   model?: string;
   permissionMode?: 'default' | 'acceptEdits' | 'plan' | 'auto';

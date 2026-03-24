@@ -18,7 +18,10 @@ export interface CommandResult {
   handled: boolean;
   claudePrompt?: string; // If set, this text should be sent to Claude
   mcpStatusRequest?: boolean; // If true, caller should fetch MCP status asynchronously
-  continueRecent?: boolean; // If true, continue the most recent conversation
+  /** Resume a specific session by ID */
+  resumeSession?: string;
+  /** Continue the most recent conversation */
+  continueRecent?: boolean;
 }
 
 /**
