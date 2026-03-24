@@ -1,7 +1,7 @@
 import { loadJson, saveJson } from './store.js';
-import { mkdirSync, existsSync, readFileSync } from 'node:fs';
+import { mkdirSync, existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, basename } from 'node:path';
 import { DATA_DIR } from './constants.js';
 import { logger } from './logger.js';
 
@@ -13,21 +13,79 @@ const CLAUDE_PROJECTS_DIR = join(homedir(), '.claude', 'projects');
 /** Claude Code 会话索引条目 */
 export interface ClaudeSessionEntry {
   sessionId: string;
-  fullPath: string;
-  fileMtime: number;
   firstPrompt: string;
   messageCount: number;
-  created: string;
   modified: string;
-  gitBranch: string;
-  projectPath: string;
-  isSidechain: boolean;
 }
 
 /** Claude Code 会话索引 */
 interface ClaudeSessionIndex {
   version: number;
-  entries: ClaudeSessionEntry[];
+  entries: Array<{
+    sessionId: string;
+    fullPath: string;
+    fileMtime: number;
+    firstPrompt: string;
+    messageCount: number;
+    created: string;
+    modified: string;
+    gitBranch: string;
+    projectPath: string;
+    isSidechain: boolean;
+  }>;
+}
+
+/**
+ * 将工作目录转换为 Claude Code 的项目目录名格式
+ */
+function workingDirToProjectName(workingDirectory: string): string {
+  // 标准化路径，统一使用正斜杠
+  const normalized = workingDirectory.replace(/\\/g, '/');
+  // 移除末尾斜杠
+  const trimmed = normalized.replace(/\/+$/, '');
+  // 转换格式: D:/code2/wechat-claude-code -> D--code2-wechat-claude-code
+  return trimmed
+    .replace(/^\w+:/, (match) => match.replace(':', '-').toUpperCase())
+    .replace(/\//g, '-');
+}
+
+/**
+ * 从 .jsonl 文件中提取会话信息
+ */
+function extractSessionInfoFromJsonl(filePath: string): { firstPrompt: string; messageCount: number } | null {
+  try {
+    const content = readFileSync(filePath, 'utf-8');
+    const lines = content.trim().split('\n');
+    let firstPrompt = '';
+    let messageCount = 0;
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const entry = JSON.parse(line);
+        messageCount++;
+        // 查找第一条用户消息作为标题
+        if (!firstPrompt && entry.type === 'user' && entry.message?.content) {
+          const content = entry.message.content;
+          if (Array.isArray(content)) {
+            const textBlock = content.find((b: { type: string }) => b.type === 'text');
+            if (textBlock?.text) {
+              firstPrompt = textBlock.text;
+            }
+          } else if (typeof content === 'string') {
+            firstPrompt = content;
+          }
+        }
+      } catch {
+        // 忽略解析错误的行
+      }
+    }
+
+    return { firstPrompt: firstPrompt.slice(0, 100) || '(无标题)', messageCount };
+  } catch (err) {
+    logger.debug('Failed to extract session info', { filePath, error: err });
+    return null;
+  }
 }
 
 /**
@@ -37,32 +95,67 @@ interface ClaudeSessionIndex {
  */
 export function listRecentSessions(workingDirectory: string, limit: number = 5): ClaudeSessionEntry[] {
   try {
-    // 将工作目录转换为 Claude Code 的项目目录名格式
-    // 例如: D:\code2\wechat-claude-code -> D--code2-wechat-claude-code
-    const projectName = workingDirectory
-      .replace(/^[A-Za-z]:/, (match) => match.replace(':', '-').toUpperCase())
-      .replace(/[/\\]/g, '-');
+    const projectName = workingDirToProjectName(workingDirectory);
+    const projectDir = join(CLAUDE_PROJECTS_DIR, projectName);
 
-    const indexPath = join(CLAUDE_PROJECTS_DIR, projectName, 'sessions-index.json');
-
-    if (!existsSync(indexPath)) {
-      logger.debug('No sessions index found', { indexPath });
+    if (!existsSync(projectDir)) {
+      logger.debug('Project directory not found', { projectDir });
       return [];
     }
 
-    const content = readFileSync(indexPath, 'utf-8');
-    const index: ClaudeSessionIndex = JSON.parse(content);
+    // 首先尝试从 sessions-index.json 读取
+    const indexPath = join(projectDir, 'sessions-index.json');
+    if (existsSync(indexPath)) {
+      try {
+        const content = readFileSync(indexPath, 'utf-8');
+        const index: ClaudeSessionIndex = JSON.parse(content);
 
-    if (!index.entries || index.entries.length === 0) {
+        if (index.entries && index.entries.length > 0) {
+          const sorted = [...index.entries]
+            .sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime())
+            .slice(0, limit);
+
+          return sorted.map(e => ({
+            sessionId: e.sessionId,
+            firstPrompt: e.firstPrompt,
+            messageCount: e.messageCount,
+            modified: e.modified,
+          }));
+        }
+      } catch (err) {
+        logger.debug('Failed to read sessions index', { indexPath, error: err });
+      }
+    }
+
+    // 回退：直接扫描 .jsonl 文件
+    const files = readdirSync(projectDir);
+    const jsonlFiles = files.filter(f => f.endsWith('.jsonl'));
+
+    if (jsonlFiles.length === 0) {
       return [];
     }
 
-    // 按 modified 时间降序排序，取最近的 limit 个
-    const sorted = [...index.entries]
-      .sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime())
-      .slice(0, limit);
+    const sessions: ClaudeSessionEntry[] = [];
+    for (const file of jsonlFiles) {
+      const filePath = join(projectDir, file);
+      const sessionId = file.replace('.jsonl', '');
+      const info = extractSessionInfoFromJsonl(filePath);
+      const fileStat = statSync(filePath);
 
-    return sorted;
+      if (info) {
+        sessions.push({
+          sessionId,
+          firstPrompt: info.firstPrompt,
+          messageCount: info.messageCount,
+          modified: new Date(fileStat.mtime).toISOString(),
+        });
+      }
+    }
+
+    // 按修改时间排序
+    sessions.sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime());
+
+    return sessions.slice(0, limit);
   } catch (err) {
     logger.error('Failed to list recent sessions', { error: err instanceof Error ? err.message : String(err) });
     return [];
