@@ -63,17 +63,19 @@ function extractSessionInfoFromJsonl(filePath: string): { firstPrompt: string; m
       if (!line.trim()) continue;
       try {
         const entry = JSON.parse(line);
-        messageCount++;
-        // 查找第一条用户消息作为标题
-        if (!firstPrompt && entry.type === 'user' && entry.message?.content) {
-          const content = entry.message.content;
-          if (Array.isArray(content)) {
-            const textBlock = content.find((b: { type: string }) => b.type === 'text');
-            if (textBlock?.text) {
-              firstPrompt = textBlock.text;
+
+        // 只计算 user 消息
+        if (entry.type === 'user' && entry.message?.content) {
+          messageCount++;
+          const msgContent = entry.message.content;
+          // 查找第一条非命令的用户消息作为标题
+          if (!firstPrompt && typeof msgContent === 'string') {
+            // 跳过命令和元数据消息
+            if (!msgContent.startsWith('<local-command-caveat>') &&
+                !msgContent.startsWith('<command-name>') &&
+                !msgContent.includes('Caveat:')) {
+              firstPrompt = msgContent;
             }
-          } else if (typeof content === 'string') {
-            firstPrompt = content;
           }
         }
       } catch {
