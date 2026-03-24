@@ -316,6 +316,50 @@ async function handleMessage(
       return;
     }
 
+    if (result.handled && result.mcpStatusRequest) {
+      // Async MCP status request
+      const { getMcpServerStatus } = await import('./claude/provider.js');
+      const cwd = session.workingDirectory || config.workingDirectory;
+      const mcpServers = await getMcpServerStatus(cwd);
+
+      if (!mcpServers || mcpServers.length === 0) {
+        await sender.sendText(fromUserId, contextToken, '📋 MCP 服务器状态\n\n暂无已连接的 MCP 服务器');
+        return;
+      }
+
+      const lines: string[] = ['📋 MCP 服务器状态\n'];
+      for (const server of mcpServers) {
+        const statusIcon = server.status === 'connected' ? '✅' :
+                           server.status === 'failed' ? '❌' :
+                           server.status === 'needs-auth' ? '🔐' :
+                           server.status === 'pending' ? '⏳' : '❓';
+        lines.push(`${statusIcon} ${server.name}`);
+        lines.push(`   状态: ${server.status}`);
+        lines.push('');
+      }
+
+      await sender.sendText(fromUserId, contextToken, lines.join('\n').trimEnd());
+      return;
+    }
+
+    if (result.handled && result.continueRecent) {
+      // Continue the most recent conversation using SDK's continue option
+      await sendToClaude(
+        '继续我们之前的对话', // This prompt will be sent with continue: true
+        undefined,
+        fromUserId,
+        contextToken,
+        account,
+        session,
+        sessionStore,
+        permissionBroker,
+        sender,
+        config,
+        true, // continueRecent flag
+      );
+      return;
+    }
+
     if (result.handled && result.claudePrompt) {
       // Fall through to send the claudePrompt to Claude
       await sendToClaude(
@@ -377,6 +421,7 @@ async function sendToClaude(
   permissionBroker: ReturnType<typeof createPermissionBroker>,
   sender: ReturnType<typeof createSender>,
   config: ReturnType<typeof loadConfig>,
+  continueRecent: boolean = false,
 ): Promise<void> {
   // Set state to processing
   session.state = 'processing';
@@ -417,7 +462,8 @@ async function sendToClaude(
     const queryOptions: QueryOptions = {
       prompt: userText || '请分析这张图片',
       cwd: session.workingDirectory || config.workingDirectory,
-      resume: session.sdkSessionId,
+      resume: continueRecent ? undefined : session.sdkSessionId,
+      continueRecent,
       model: session.model,
       permissionMode: sdkPermissionMode,
       images,
@@ -483,6 +529,10 @@ async function sendToClaude(
     // Update session with new SDK session ID
     session.sdkSessionId = result.sessionId || undefined;
     session.state = 'idle';
+    // Store MCP servers info if available
+    if (result.mcpServers && result.mcpServers.length > 0) {
+      session.mcpServers = result.mcpServers;
+    }
     sessionStore.save(account.accountId, session);
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);

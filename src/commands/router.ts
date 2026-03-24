@@ -1,7 +1,7 @@
 import type { Session } from '../session.js';
 import { findSkill } from '../claude/skill-scanner.js';
 import { logger } from '../logger.js';
-import { handleHelp, handleClear, handleCwd, handleModel, handlePermission, handleStatus, handleSkills, handleHistory, handleReset, handleVersion, handleExport, handleUndo, handleGit, handleUnknown } from './handlers.js';
+import { handleHelp, handleClear, handleCwd, handleModel, handlePermission, handleStatus, handleSkills, handleHistory, handleReset, handleVersion, handleExport, handleUndo, handleGit, handleUnknown, handleCompact, handleResume, handleMcp } from './handlers.js';
 
 export interface CommandContext {
   accountId: string;
@@ -17,6 +17,8 @@ export interface CommandResult {
   reply?: string;
   handled: boolean;
   claudePrompt?: string; // If set, this text should be sent to Claude
+  mcpStatusRequest?: boolean; // If true, caller should fetch MCP status asynchronously
+  continueRecent?: boolean; // If true, continue the most recent conversation
 }
 
 /**
@@ -36,6 +38,9 @@ export interface CommandResult {
  *   /undo [n]         - Undo recent messages (default 1)
  *   /git              - Show git status of working directory
  *   /version          - Show version info
+ *   /compact          - Compact context (start new SDK session, keep history)
+ *   /resume           - Resume previous SDK session
+ *   /mcp              - Show MCP server status
  *   /<skill>          - Invoke a skill by name (args are forwarded to Claude)
  */
 export function routeCommand(ctx: CommandContext): CommandResult {
@@ -79,6 +84,12 @@ export function routeCommand(ctx: CommandContext): CommandResult {
     case 'version':
     case 'v':
       return handleVersion();
+    case 'compact':
+      return handleCompact(ctx);
+    case 'resume':
+      return handleResume(ctx);
+    case 'mcp':
+      return handleMcp(ctx);
     default:
       return handleUnknown(cmd, args);
   }

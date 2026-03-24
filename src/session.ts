@@ -20,14 +20,23 @@ export interface ChatMessage {
   timestamp: number;
 }
 
+export interface McpServerInfo {
+  name: string;
+  status: string;
+}
+
 export interface Session {
   sdkSessionId?: string;
+  /** 备份的 SDK 会话 ID，用于 /resume 恢复 */
+  previousSdkSessionId?: string;
   workingDirectory: string;
   model?: string;
   permissionMode?: 'default' | 'acceptEdits' | 'plan' | 'auto';
   state: SessionState;
   chatHistory: ChatMessage[];
   maxHistoryLength?: number;
+  /** MCP 服务器状态信息 */
+  mcpServers?: McpServerInfo[];
 }
 
 export interface PendingPermission {

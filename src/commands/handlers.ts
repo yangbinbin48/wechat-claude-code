@@ -25,6 +25,9 @@ const HELP_TEXT = `可用命令：
   /clear            清除当前会话（重新开始）
   /reset            完全重置会话（包括工作目录等设置）
   /status           查看当前会话状态
+  /compact          压缩上下文（开始新 SDK 会话，保留历史）
+  /resume           恢复之前的 SDK 会话
+  /mcp              查看 MCP 服务器状态
 
 配置：
   /cwd [路径]       查看或切换工作目录
@@ -229,6 +232,59 @@ export function handleUndo(ctx: CommandContext, args: string): CommandResult {
   ctx.updateSession({ chatHistory: ctx.session.chatHistory });
 
   return { reply: `✅ 已撤销最近 ${actualCount} 条对话`, handled: true };
+}
+
+/** 压缩上下文 - 清除 SDK 会话 ID，开始新上下文但保留聊天历史 */
+export function handleCompact(ctx: CommandContext): CommandResult {
+  const currentSessionId = ctx.session.sdkSessionId;
+
+  if (!currentSessionId) {
+    return { reply: 'ℹ️ 当前没有活动的 SDK 会话，无需压缩。', handled: true };
+  }
+
+  // 备份当前会话 ID 以便恢复
+  ctx.updateSession({
+    previousSdkSessionId: currentSessionId,
+    sdkSessionId: undefined,
+  });
+
+  return {
+    reply: `✅ 上下文已压缩\n\n` +
+           `下次消息将开始新的 SDK 会话（token 清零）\n` +
+           `聊天历史已保留，可用 /history 查看\n` +
+           `如需恢复之前会话，请使用 /resume`,
+    handled: true,
+  };
+}
+
+/** 恢复之前的 SDK 会话 */
+export function handleResume(ctx: CommandContext): CommandResult {
+  const previousSessionId = ctx.session.previousSdkSessionId;
+
+  if (previousSessionId) {
+    // 恢复被 /compact 压缩的会话
+    ctx.updateSession({
+      sdkSessionId: previousSessionId,
+      previousSdkSessionId: undefined,
+    });
+
+    return {
+      reply: `✅ 已恢复之前的 SDK 会话\n\n` +
+             `会话 ID: ${previousSessionId.slice(0, 8)}...\n` +
+             `现在可以继续之前的对话上下文`,
+      handled: true,
+    };
+  }
+
+  // 没有被压缩的会话，尝试恢复最近的会话
+  // 返回特殊标志让 main.ts 使用 continue: true
+  return { handled: true, continueRecent: true };
+}
+
+/** 查看 MCP 服务器状态 */
+export function handleMcp(_ctx: CommandContext): CommandResult {
+  // Return a special flag to indicate async MCP status request
+  return { handled: true, mcpStatusRequest: true };
 }
 
 /** 查看 git 状态 */

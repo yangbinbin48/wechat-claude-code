@@ -4,9 +4,11 @@ import {
   type SDKAssistantMessage,
   type SDKResultMessage,
   type SDKUserMessage,
+  type SDKSystemMessage,
   type Options,
   type CanUseTool,
   type PermissionResult,
+  type Query,
 } from "@anthropic-ai/claude-agent-sdk";
 import { logger } from "../logger.js";
 
@@ -14,10 +16,17 @@ import { logger } from "../logger.js";
 // Public types
 // ---------------------------------------------------------------------------
 
+export interface McpServerInfo {
+  name: string;
+  status: string;
+}
+
 export interface QueryOptions {
   prompt: string;
   cwd: string;
   resume?: string;
+  /** Continue the most recent conversation instead of starting a new one */
+  continueRecent?: boolean;
   model?: string;
   permissionMode?: "default" | "acceptEdits" | "plan";
   images?: Array<{
@@ -31,6 +40,58 @@ export interface QueryResult {
   text: string;
   sessionId: string;
   error?: string;
+  mcpServers?: McpServerInfo[];
+}
+
+// ---------------------------------------------------------------------------
+// MCP Status function
+// ---------------------------------------------------------------------------
+
+/**
+ * Get MCP server status using the SDK's mcpServerStatus() method.
+ * This creates a minimal query, calls mcpServerStatus(), then interrupts.
+ */
+export async function getMcpServerStatus(cwd: string): Promise<McpServerInfo[]> {
+  const sdkOptions: Options = {
+    cwd,
+    permissionMode: "plan", // Use plan mode to prevent any tool execution
+    settingSources: ["user", "project"],
+  };
+
+  try {
+    const q: Query = query({ prompt: " ", options: sdkOptions });
+
+    // Wait for init message then get MCP status
+    let mcpStatus: McpServerInfo[] = [];
+
+    // Start consuming messages to trigger init
+    const messagePromise = (async () => {
+      for await (const message of q) {
+        if (message.type === "system" && "subtype" in message && message.subtype === "init") {
+          // Now we can call mcpServerStatus
+          try {
+            const status = await q.mcpServerStatus();
+            mcpStatus = status.map(s => ({
+              name: s.name,
+              status: s.status,
+            }));
+            logger.debug("Got MCP server status", { count: mcpStatus.length });
+          } catch (err) {
+            logger.error("Failed to get MCP status", { err });
+          }
+          // Interrupt the query
+          await q.interrupt();
+          break;
+        }
+      }
+    })();
+
+    await messagePromise;
+    return mcpStatus;
+  } catch (err) {
+    logger.error("getMcpServerStatus threw", { error: err instanceof Error ? err.message : String(err) });
+    return [];
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -102,6 +163,7 @@ export async function claudeQuery(options: QueryOptions): Promise<QueryResult> {
     prompt,
     cwd,
     resume,
+    continueRecent,
     model,
     permissionMode,
     images,
@@ -113,6 +175,7 @@ export async function claudeQuery(options: QueryOptions): Promise<QueryResult> {
     model,
     permissionMode,
     resume: !!resume,
+    continueRecent: !!continueRecent,
     hasImages: !!images?.length,
   });
 
@@ -132,6 +195,7 @@ export async function claudeQuery(options: QueryOptions): Promise<QueryResult> {
 
   if (model) sdkOptions.model = model;
   if (resume) sdkOptions.resume = resume;
+  if (continueRecent) sdkOptions.continue = true;
 
   // Permission callback — bridges the SDK's CanUseTool to our simpler handler.
   if (onPermissionRequest) {
@@ -167,6 +231,7 @@ export async function claudeQuery(options: QueryOptions): Promise<QueryResult> {
   let sessionId = "";
   const textParts: string[] = [];
   let errorMessage: string | undefined;
+  let mcpServers: McpServerInfo[] | undefined;
 
   try {
     const result = query({ prompt: promptParam, options: sdkOptions });
@@ -199,9 +264,16 @@ export async function claudeQuery(options: QueryOptions): Promise<QueryResult> {
           break;
         }
         case "system": {
-          logger.debug("SDK system message", {
-            subtype: (message as { subtype?: string }).subtype,
-          });
+          const sysMsg = message as SDKSystemMessage;
+          if (sysMsg.subtype === "init" && sysMsg.mcp_servers) {
+            mcpServers = sysMsg.mcp_servers.map(s => ({
+              name: s.name,
+              status: s.status,
+            }));
+            logger.debug("Captured MCP servers from init message", {
+              count: mcpServers.length,
+            });
+          }
           break;
         }
         default:
@@ -230,5 +302,6 @@ export async function claudeQuery(options: QueryOptions): Promise<QueryResult> {
     text: fullText,
     sessionId,
     error: errorMessage,
+    mcpServers,
   };
 }

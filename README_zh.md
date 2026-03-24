@@ -76,10 +76,19 @@ npm run daemon -- logs     # 查看最近日志
 |------|------|
 | `/help` | 显示帮助 |
 | `/clear` | 清除当前会话（重新开始） |
+| `/reset` | 完全重置会话（包括工作目录等设置） |
 | `/model <名称>` | 切换 Claude 模型 |
 | `/permission <模式>` | 切换权限模式 |
 | `/status` | 查看当前会话状态 |
-| `/skills` | 列出已安装的 Claude Code Skill |
+| `/skills [full]` | 列出已安装的 Claude Code Skill |
+| `/compact` | 压缩上下文（开始新 SDK 会话，保留历史） |
+| `/resume` | 恢复之前的 SDK 会话 |
+| `/mcp` | 查看 MCP 服务器状态 |
+| `/history [数量]` | 查看对话记录（默认 20 条） |
+| `/export` | 导出对话到文件 |
+| `/undo [数量]` | 撤销最近的对话 |
+| `/git` | 查看工作目录的 git 状态 |
+| `/version` | 查看版本信息 |
 | `/<skill> [参数]` | 触发任意已安装的 Skill |
 
 ## 权限审批

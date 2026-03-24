@@ -76,10 +76,19 @@ npm run daemon -- logs     # View recent logs
 |---------|-------------|
 | `/help` | Show available commands |
 | `/clear` | Clear current session (start fresh) |
+| `/reset` | Full reset including all settings |
 | `/model <name>` | Switch Claude model |
 | `/permission <mode>` | Switch permission mode |
 | `/status` | View current session state |
-| `/skills` | List installed Claude Code skills |
+| `/skills [full]` | List installed Claude Code skills |
+| `/compact` | Compact context (start new SDK session, keep history) |
+| `/resume` | Resume previous SDK session |
+| `/mcp` | Show MCP server status |
+| `/history [n]` | View chat history (default 20) |
+| `/export` | Export chat to file |
+| `/undo [n]` | Undo recent messages |
+| `/git` | Show git status of working directory |
+| `/version` | Show version info |
 | `/<skill> [args]` | Trigger any installed skill |
 
 ## Permission Approval
